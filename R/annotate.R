@@ -598,8 +598,11 @@ distance2nearestFeature <- function(g.idh,tss, full.output = FALSE)
 # subject is also GenomicRanges object
 .nearest.2bed<-function(g.bed,subject)
 {
-  chrs1=IRanges::levels(seqnames(g.bed))
-  chrs2=IRanges::levels(seqnames(subject))
+    ##chrs1=IRanges::levels(seqnames(g.bed))
+    ##chrs2=IRanges::levels(seqnames(subject))
+    ## the above function does not exist
+  chrs1=GenomicRanges::seqlevels(g.bed)
+  chrs2=GenomicRanges::seqlevels(subject)
   chrs=chrs1[chrs1 %in% chrs2]
   res.df=NULL
   for(i in 1:length(chrs))
