@@ -6,15 +6,16 @@ Version: 0.9.2.0
 Author: Altuna Akalin, Matthias Kormaksson, Sheng Li
 Maintainer: Altuna Akalin <aakalin@gmail.com>
 Description: methylKit is an R package for DNA methylation analysis and
-  annotation from high-throughput bisulfite sequencing. The package is designed 
-  to deal with sequencing data from RRBS and its variants, but also target-capture 
-  methods and whole genome bisulfite sequencing. It also has functions to analyze 
-  base-pair resolution 5hmC data from experimental protocols such as oxBS-Seq 
-  and TAB-Seq. Perl is needed to read SAM files only.
+    annotation from high-throughput bisulfite sequencing. The package is
+    designed to deal with sequencing data from RRBS and its variants, but also
+    target-capture methods and whole genome bisulfite sequencing. It also has
+    functions to analyze base-pair resolution 5hmC data from experimental
+    protocols such as oxBS-Seq and TAB-Seq. Perl is needed to read SAM files
+    only.
 License: Artistic-2.0
 URL: http://code.google.com/p/methylkit/
 LazyLoad: yes
-SystemRequirements:  Perl
+SystemRequirements: Perl
 biocViews: DNAMethylation
 Depends:
     R (>= 2.15.0),
@@ -26,20 +27,3 @@ Imports:
     parallel
 Suggests:
     testthat
-Collate:
-    'backbone.R'
-    'diffMeth.R'
-    'annotate.R'
-    'clusterSamples.R'
-    'regionalize.R'
-    'read.bismark.R'
-    'document_data.R'
-    'bedgraph.R'
-    'reorganize.R'
-    'percMethylation.R'
-    'normalizeCoverage.R'
-    'pool.R'
-    'adjust.methylC.R'
-    'updateMethObject.R'
-    'batchControl.R'
-    'merge2.R'
