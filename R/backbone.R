@@ -1,32 +1,40 @@
- 
-#---------------------------------------------------------------------------------------
-# regular R functions to be used in S4 functions
+## define from global options:
 
-# reads a table in a fast way to a dataframe
-.readTableFast<-function(filename,header=T,skip=0,sep="")
+##---------------------------------------------------------------------------------------
+## regular R functions to be used in S4 functions
+
+## reads a table in a fast way to a dataframe
+## first few rows, are often not a good representation of colClasses
+.readTableFast<-function(filename, header = TRUE, skip = 0, sep="", read.full = getOption("read.full"))
 {
-  tab5rows <- read.table(filename, header = header,skip=skip,sep=sep, 
-                         nrows = 100,stringsAsFactors=FALSE)
-  classes  <- sapply(tab5rows, class)
-  return( read.table(filename, header = header,skip=skip,sep=sep, 
-                     colClasses = classes)  )
+    if(read.full){
+        return(read.table(filename, header = header,skip=skip,sep=sep))
+    }
+    tab5rows <- read.table(filename, header = header,skip = skip, sep = sep,
+                           nrows = 100, stringsAsFactors=FALSE)
+    classes  <- sapply(tab5rows, class)
+    ## most of these files are BED; so chr should be char.
+    ## following NCBI format we have genes which look like 1, 2, 3... XY
+    classes[1] = "character"
+    return( read.table(filename, header = header,skip=skip,sep=sep,
+                       colClasses = classes)  )
 }
 
-# reformats a data.frame to a standard methylraw data.frame
-# no matter what the alignment pipeline
+                                        # reformats a data.frame to a standard methylraw data.frame
+                                        # no matter what the alignment pipeline
 .structureAMPoutput<-function(data)
-{  
-  strand=rep("+",nrow(data))
-  strand[data[,4]=="R"]="-"
-  numCs=round(data[,5]*data[,6]/100)
-  numTs=round(data[,5]*data[,7]/100)
-  
-  data.frame(chr=data[,2],start=data[,3],end=data[,3]
-             ,strand=strand,coverage=data[,5],numCs=numCs,numTs=numTs)
+{
+    strand=rep("+",nrow(data))
+    strand[data[,4]=="R"]="-"
+    numCs=round(data[,5]*data[,6]/100)
+    numTs=round(data[,5]*data[,7]/100)
+
+    data.frame(chr=data[,2],start=data[,3],end=data[,3]
+               ,strand=strand,coverage=data[,5],numCs=numCs,numTs=numTs)
 }
 
-# reformats a generic structure data.frame to a standard methylraw data.frame
-# based on the column number assignment and if freqC is fraction or not.
+                                        # reformats a generic structure data.frame to a standard methylraw data.frame
+                                        # based on the column number assignment and if freqC is fraction or not.
 .structureGeneric<-function(data, pipeline)
 {
     fraction=pipeline$fraction
@@ -36,90 +44,90 @@
     coverage.col=pipeline$coverage.col
     strand.col=pipeline$strand.col
     freqC.col=pipeline$freqC.col
-    
-    #coerce coverage column to integer
+
+                                        #coerce coverage column to integer
     data[,coverage.col]=round(data[,coverage.col])
-    
+
     strand=rep("+",nrow(data))
     strand[data[,strand.col]=="R" | data[,strand.col]=="-"]="-"
     adj=ifelse(fraction, 1, 100)
     numCs=round(data[,coverage.col]*data[,freqC.col]/adj)
     numTs=data[,coverage.col] - numCs
-    #id=paste(data[,chr.col], data[,start.col],sep=".")
-    
+                                        #id=paste(data[,chr.col], data[,start.col],sep=".")
+
     data.frame(chr=data[,chr.col],start=data[,start.col],end=data[,end.col]
-    ,strand=strand,coverage=data[,coverage.col],numCs=numCs,numTs=numTs)
-    
+               ,strand=strand,coverage=data[,coverage.col],numCs=numCs,numTs=numTs)
+
 }
 
 .check.pipeline.list<-function(pipeline){
-    if(!all(c("fraction", "chr.col", "start.col", "end.col", "coverage.col", 
+    if(!all(c("fraction", "chr.col", "start.col", "end.col", "coverage.col",
               "strand.col", "freqC.col") %in% names(pipeline))){
         stop("Miss components for pipeline for the generic read.",
              "Try amp, or bismark, or a list in the correct format for",
              "for generic methylation file reading!")
     }
-    
-    values=c(pipeline$chr.col, pipeline$start.col, pipeline$coverage.col, 
-             pipeline$strand.col, pipeline$freqC.col)
+
+    values=c(pipeline$chr.col, pipeline$start.col, pipeline$coverage.col,
+        pipeline$strand.col, pipeline$freqC.col)
     if(any(duplicated(values))){
-        stop("Find duplicated column number among chr.col, start.col,", 
+        stop("Find duplicated column number among chr.col, start.col,",
              "coverage.col, strand.col, freqC.col!")
     }
 }
 
-# unfies forward and reverse strand CpGs on the forward strand if the if
-# both are on the same CpG
-# if that's the case their values are generally correlated
-.CpG.dinuc.unify<-function(cpg)
+## unfies forward and reverse strand CpGs on the forward strand if the if
+## both are on the same CpG
+## if that's the case their values are generally correlated
+.CpG.dinuc.unify <- function(cpg)
 {
-  
-  cpgR=cpg[cpg$strand=="-",]
-  cpgF=cpg[cpg$strand=="+",]
-  cpgR$start=cpgR$start-1
-  cpgR$end=cpgR$end-1
-  cpgR$strand="+"
-  
-  #cpgR$id=paste(cpgR$chr,cpgR$start,sep=".")
-  
-  cpgFR=merge(cpgF,cpgR,by=c("chr","start","end"))
-  #hemi =cpgFR[abs(cpgFR$freqC.x-cpgFR$freqC.y)>=50,]
-  #cpgFR=cpgFR[abs(cpgFR$freqC.x-cpgFR$freqC.y)<50,]  
-  res=data.frame(
-    chr     =as.character(cpgFR$chr),
-    start    =(cpgFR$start),
-    end      =(cpgFR$start),
-    strand  =rep("+",nrow(cpgFR)),
-    coverage=cpgFR$coverage.x + cpgFR$coverage.y,
-    numCs   =cpgFR$numCs.x + cpgFR$numCs.y ,
-    numTs   =cpgFR$numTs.x + cpgFR$numTs.y ,stringsAsFactors =F
-  )
-  Fid=paste(cpgF$chr,cpgF$start,cpgF$end)
-  Rid=paste(cpgR$chr,cpgR$start,cpgR$end)
-  resid=paste(res$chr,res$start,res$end)  
-  res=rbind(res, cpgF[ !  Fid  %in%  resid,],cpgR[ ! Rid  %in%  resid,] )
-  res=res[order(res$chr,res$start),]
-  return(res)
+
+    cpgR=cpg[cpg$strand=="-",]
+    cpgF=cpg[cpg$strand=="+",]
+    cpgR$start=cpgR$start-1
+    cpgR$end=cpgR$end-1
+    cpgR$strand="+"
+
+                                        #cpgR$id=paste(cpgR$chr,cpgR$start,sep=".")
+
+    cpgFR=merge(cpgF,cpgR,by=c("chr","start","end"))
+                                        #hemi =cpgFR[abs(cpgFR$freqC.x-cpgFR$freqC.y)>=50,]
+                                        #cpgFR=cpgFR[abs(cpgFR$freqC.x-cpgFR$freqC.y)<50,]
+    res=data.frame(
+        chr     =as.character(cpgFR$chr),
+        start    =(cpgFR$start),
+        end      =(cpgFR$start),
+        strand  =rep("+",nrow(cpgFR)),
+        coverage=cpgFR$coverage.x + cpgFR$coverage.y,
+        numCs   =cpgFR$numCs.x + cpgFR$numCs.y ,
+        numTs   =cpgFR$numTs.x + cpgFR$numTs.y ,stringsAsFactors =F
+        )
+    Fid=paste(cpgF$chr,cpgF$start,cpgF$end)
+    Rid=paste(cpgR$chr,cpgR$start,cpgR$end)
+    resid=paste(res$chr,res$start,res$end)
+    res=rbind(res, cpgF[ !  Fid  %in%  resid,],cpgR[ ! Rid  %in%  resid,] )
+    res=res[order(res$chr,res$start),]
+    return(res)
 }
 
 
-# end of regular functions to be used in S4 functions
-#---------------------------------------------------------------------------------------
+                                        # end of regular functions to be used in S4 functions
+                                        #---------------------------------------------------------------------------------------
 
 
 
 valid.methylRawObj <- function(object) {
-  
-    
+
+
     data=getData(object)
     check1=( (object@resolution == "base") | (object@resolution == "region") )
     check2=(ncol(data)==7)
     if(check1 & check2){
-      return(TRUE)
+        return(TRUE)
     }
     else if (! check1 ){
         cat("resolution slot has to be either 'base' or 'region':",
-              "other values not allowed")
+            "other values not allowed")
     }
     else if(! check2){
         cat("data part of methylRaw have",ncol(data),"columns, expected 7 columns")
@@ -130,7 +138,7 @@ valid.methylRawObj <- function(object) {
 
 #' An S4 class for holding raw methylation data from an alignment pipeline.
 #'
-#' This object stores the raw mehylation data that is read in through read 
+#' This object stores the raw mehylation data that is read in through read
 #' function and extends \code{data.frame}.The raw methylation data is basically
 #' percent methylation values and read coverage values per genomic base/region.
 #'
@@ -138,54 +146,54 @@ valid.methylRawObj <- function(object) {
 #'  \item{\code{sample.id}:}{string for an identifier of the sample}
 #'  \item{\code{assembly}:}{string for genome assembly, ex: hg18,hg19,mm9}
 #'  \item{\code{context}:}{ methylation context string, ex: CpG,CpH,CHH, etc.}
-#'  \item{\code{resolution}:}{ resolution of methylation information, 'base' or 
+#'  \item{\code{resolution}:}{ resolution of methylation information, 'base' or
 #'  'region'}
 #'                 }
 #' @section Details:
-#' \code{methylRaw} class extends \code{\link{data.frame}} class therefore 
-#' providing novice and experienced R users with a data structure that is well 
+#' \code{methylRaw} class extends \code{\link{data.frame}} class therefore
+#' providing novice and experienced R users with a data structure that is well
 #' known and ubiquitous in many R packages.
-#' 
+#'
 #' @section Subsetting:
 #'  In the following code snippets, \code{x} is a \code{methylDiff}.
 #'  Subsetting by \code{x[i,]} will produce a new object if subsetting is done on
-#'  rows. Column subsetting is not directly allowed to prevent errors in the 
+#'  rows. Column subsetting is not directly allowed to prevent errors in the
 #'  downstream analysis. see ?methylKit[ .
-#' 
+#'
 #' @section Accessors:
 #' The following functions provides access to data slots of methylDiff:
 #' \code{\link[methylKit]{getData}},\code{\link[methylKit]{getAssembly}},
 #' \code{\link[methylKit]{getContext}}
-#' 
+#'
 #' @section Coercion:
-#'   \code{methylRaw} object can be coerced to 
+#'   \code{methylRaw} object can be coerced to
 #'   \code{\link[GenomicRanges]{GRanges}} object via \code{\link{as}} function.
-#' 
+#'
 #' @examples
-#' 
+#'
 #' # example of a raw methylation data contained as a text file
 #' read.table(system.file("extdata", "control1.myCpG.txt", package = "methylKit"),
 #' header=TRUE,nrows=5)
-#' 
+#'
 #' data(methylKit)
-#' 
+#'
 #' # example of a methylRaw object
 #' head(methylRawList.obj[[1]])
 #' str(head(methylRawList.obj[[1]]))
-#' 
+#'
 #' library(GenomicRanges)
-#' 
+#'
 #' #coercing methylRaw object to GRanges object
 #' my.gr=as(methylRawList.obj[[1]],"GRanges")
-#' 
+#'
 #' @name methylRaw-class
 #' @aliases methylRaw
 #' @docType class
 #' @rdname methylRaw-class
 #' @export
 setClass("methylRaw", contains= "data.frame",representation(
-  sample.id = "character", assembly = "character",context="character",
-  resolution="character"),validity=valid.methylRawObj)
+                          sample.id = "character", assembly = "character",context="character",
+                          resolution="character"),validity=valid.methylRawObj)
 
 
 #' An S4 class for holding a list of methylRaw objects.
@@ -197,12 +205,12 @@ setClass("methylRaw", contains= "data.frame",representation(
 #'
 #' @section Slots:\describe{
 #'                  \item{\code{treatment}}{numeric vector denoting control and test samples}
-#'                  \item{\code{.Data}}{a list of \code{\link{methylRaw}} objects  } 
+#'                  \item{\code{.Data}}{a list of \code{\link{methylRaw}} objects  }
 #'                }
-#'                
+#'
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' #applying functions designed for methylRaw on methylRawList object
 #' lapply(methylRawList.obj,"getAssembly")
 #'
@@ -229,7 +237,7 @@ setClass("methylRawList", representation(treatment = "numeric"),contains = "list
 #' @param context methylation context string, ex: CpG,CpH,CHH, etc. (default:CpG)
 #' @usage read(location,sample.id,assembly,pipeline="amp",header=T,skip=0,sep="", context="CpG",resolution="base",treatment)
 #' @examples
-#' 
+#'
 #' # this is a list of example files, ships with the package
 #' # for your own analysis you will just need to provide set of paths to files
 #' #you will not need the "system.file(..."  part
@@ -241,32 +249,32 @@ setClass("methylRawList", representation(treatment = "numeric"),contains = "list
 #' # read the files to a methylRawList object: myobj
 #' myobj=read( file.list,
 #'             sample.id=list("test1","test2","ctrl1","ctrl2"),assembly="hg18",treatment=c(1,1,0,0))
-#'             
+#'
 #' # read one file as methylRaw object
 #' myobj=read( file.list[[1]],
 #'             sample.id="test1",assembly="hg18")
-#'             
+#'
 #' # read a generic text file containing CpG methylation values
 #' # let's first look at the content of the file
 #' generic.file=system.file("extdata", "generic1.CpG.txt", package = "methylKit")
 #' read.table(generic.file,header=TRUE)
-#' 
-#' # And this is how you can read that generic file as a methylKit object            
+#'
+#' # And this is how you can read that generic file as a methylKit object
 #'  myobj=read( generic.file,pipeline=list(fraction=FALSE, chr.col=1,start.col=2,end.col=2,coverage.col=4,strand.col=3,freqC.col=5),
 #'             sample.id="test1",assembly="hg18")
-#'             
+#'
 #' @section Details:
 #'  When \code{pipeline} argument is a list, it is exptected to provide a named list with following names.
 #'  'fraction' is a logical value, denoting if the column frequency of Cs has a range from [0-1] or [0-100]. If true it assumes range is [0-1].
-#'  'chr.col" is the number of the column that has chrosome string.   
+#'  'chr.col" is the number of the column that has chrosome string.
 #'  'start.col' is the number of the column that has start coordinate of the base/region of the methylation event.
 #'  'end.col'  is the number of the column that has end coordinate of the base/region of the methylation event.
-#'  'coverage.col' is the number of the column that has read coverage values. 
-#'  'strand.col' is the number of the column that has strand information, the strand information in the file has to be in the form of '+' or '-', 
+#'  'coverage.col' is the number of the column that has read coverage values.
+#'  'strand.col' is the number of the column that has strand information, the strand information in the file has to be in the form of '+' or '-',
 #'  'freqC.col' is the number of the column that has the frequency of Cs. See examples to see how to read a generic methylation text file.
-#'  
+#'
 #' @return returns methylRaw or methylRawList
-#' 
+#'
 #' @export
 #' @docType methods
 #' @rdname read-methods
@@ -277,78 +285,78 @@ setGeneric("read", function(location,sample.id,assembly,pipeline="amp",header=T,
 #' @rdname read-methods
 #' @aliases read,character,character,character-method
 setMethod("read", signature(location = "character",sample.id="character",assembly="character"),
-          
-        function(location,sample.id,assembly,pipeline,header,skip,sep,context,resolution){ 
-            if(! file.exists(location)){stop(location,", That file doesn't exist !!!")}
-            data<- .readTableFast(location,header=header,skip=skip,sep=sep)    
-            if(length(pipeline)==1 ){
-              
-              if(pipeline %in% c("amp","bismark") )
-              {
-              data<- .structureAMPoutput(data)
-              }
-              else{stop("unknown 'pipeline' argument, supported alignment pipelines: 'amp' or 'bismark' " )
+
+          function(location,sample.id,assembly,pipeline,header,skip,sep,context,resolution){
+              if(! file.exists(location)){stop(location,", That file doesn't exist !!!")}
+              data<- .readTableFast(location,header=header,skip=skip,sep=sep)
+              if(length(pipeline)==1 ){
+
+                  if(pipeline %in% c("amp","bismark") )
+                      {
+                          data<- .structureAMPoutput(data)
+                      }
+                  else{stop("unknown 'pipeline' argument, supported alignment pipelines: 'amp' or 'bismark' " )
                    }
-              
-            }
-            else{
-                .check.pipeline.list(pipeline)
-                data<- .structureGeneric(data, pipeline)
-            }
 
-            obj=new("methylRaw",data,sample.id=sample.id,assembly=assembly,context=context,resolution="base")
-            obj         
+              }
+              else{
+                  .check.pipeline.list(pipeline)
+                  data<- .structureGeneric(data, pipeline)
+              }
+
+              obj=new("methylRaw",data,sample.id=sample.id,assembly=assembly,context=context,resolution="base")
+              obj
           }
-)
+          )
 
 
-# reads a list of CpG methylation files and makes methylRawList object
-#
-# @param a list containing locations(full paths) to CpG methylation files from alignment pipeline
-# @param name a list of strings that defines the experiment
-# @param assembly a string that defines the genome assembly such as hg18, mm9
-# @param pipeline name of the alignment pipeline, currently only supports AMP (default: AMP), or for generic read, a list object contain \code{fraction}=TRUE/FALSE, \code{chr.col}, \code{strand.col}, \code{start.col}, \code{end.col}, \code{coverage.col},\code{freqC.col}, for example: \code{list(fraction=T, chr.col=1, strand.col=2, coverage.col=3, freqC.col=4, start.col=5, end.col=5)}  
-# @param header if the input files has a header or not (default: TRUE)
-# @param treatment a vector contatining 0 and 1 denoting which samples are control which samples are test
-# @return returns a methylRawList object
+                                        # reads a list of CpG methylation files and makes methylRawList object
+                                        #
+                                        # @param a list containing locations(full paths) to CpG methylation files from alignment pipeline
+                                        # @param name a list of strings that defines the experiment
+                                        # @param assembly a string that defines the genome assembly such as hg18, mm9
+                                        # @param pipeline name of the alignment pipeline, currently only supports AMP (default: AMP), or for generic read, a list object contain \code{fraction}=TRUE/FALSE, \code{chr.col}, \code{strand.col}, \code{start.col}, \code{end.col}, \code{coverage.col},\code{freqC.col}, for example: \code{list(fraction=T, chr.col=1, strand.col=2, coverage.col=3, freqC.col=4, start.col=5, end.col=5)}
+                                        # @param header if the input files has a header or not (default: TRUE)
+                                        # @param treatment a vector contatining 0 and 1 denoting which samples are control which samples are test
+                                        # @return returns a methylRawList object
 #' @rdname read-methods
 #' @aliases read,list,list,character-method
 setMethod("read", signature(location = "list",sample.id="list",assembly="character"),
-          function(location,sample.id,assembly,pipeline,header,skip,sep,context,resolution,treatment){ 
-            
-            #check if the given arugments makes sense
-            if(length(location) != length(sample.id)){
-              stop("length of 'location'  and 'name' should be same\n")
-            }
-            if( (length(treatment) != length(sample.id)) & (length(treatment) !=0) ){
-              stop("length of 'treatment', 'name' and 'location' should be same\n")
-            }
-            
-            # read each given location and record it as methylraw object
-            outList=list()
-            for(i in 1:length(location))
-            {
-              data<- .readTableFast(location[[i]],header=header,skip=skip,sep=sep)# read data
-              if(length(pipeline)==1 )
-              {
-                if(pipeline %in% c("amp","bismark")){
-                  data<- .structureAMPoutput(data)
-                } else {
-                  stop("pipeline length is equal to 1 and is not amp or bismark. If you do not have amp or bismark format, please give a parameter list containing the format information of the data. Please refer details in the read help page")
-                }
+          function(location,sample.id,assembly,pipeline,header,skip,sep,context,resolution,treatment){
+
+                                        #check if the given arugments makes sense
+              if(length(location) != length(sample.id)){
+                  stop("length of 'location'  and 'name' should be same\n")
               }
-              else{
-                #stop("unknown 'pipeline' argument, supported alignment pipelines: amp")
-                .check.pipeline.list(pipeline)
-                data<- .structureGeneric(data, pipeline)
+              if( (length(treatment) != length(sample.id)) & (length(treatment) !=0) ){
+                  stop("length of 'treatment', 'name' and 'location' should be same\n")
               }
-                  
-              obj=new("methylRaw",data,sample.id=sample.id[[i]],assembly=assembly,context=context,resolution=resolution)
-              outList[[i]]=obj       
-            }
-            myobj=new("methylRawList",outList,treatment=treatment)
-            
-            myobj
+
+                                        # read each given location and record it as methylraw object
+              outList=list()
+              for(i in 1:length(location))
+                  {
+                      data<- .readTableFast(location[[i]],header=header,skip=skip,sep=sep)# read data
+                      if(length(pipeline)==1 )
+                          {
+                              if(pipeline %in% c("amp","bismark")){
+                                  data<- .structureAMPoutput(data)
+                              } else {
+                                  stop("pipeline length is equal to 1 and is not amp or bismark. If you do not have amp or bismark format, please give a parameter list containing the format information of the data. Please refer details in the read help page")
+                              }
+                          }
+                      else{
+                                        #stop("unknown 'pipeline' argument, supported alignment pipelines: amp")
+                          .check.pipeline.list(pipeline)
+                          data<- .structureGeneric(data, pipeline)
+                      }
+
+                      obj=new("methylRaw",data,sample.id=sample.id[[i]],assembly=assembly,context=context,resolution=resolution)
+                      outList[[i]]=obj
+                  }
+              myobj=new("methylRawList",outList,treatment=treatment)
+
+              myobj
           })
 
 
@@ -366,15 +374,15 @@ setMethod("read", signature(location = "list",sample.id="list",assembly="charact
 #' @usage filterByCoverage(methylObj,lo.count=NULL,lo.perc=NULL,hi.count=NULL,hi.perc=NULL)
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' # filter out bases with covereage above 500 reads
 #' filtered1=filterByCoverage(methylRawList.obj,lo.count=NULL,lo.perc=NULL,hi.count=500,hi.perc=NULL)
-#' 
+#'
 #' # filter out bases with cread coverage above 99.9th percentile of coverage distribution
 #' filtered2=filterByCoverage(methylRawList.obj,lo.count=NULL,lo.perc=NULL,hi.count=NULL,hi.perc=99.9)
-#' 
-#' 
-#' 
+#'
+#'
+#'
 #' @return \code{methylRaw} or \code{methylRawList} object depending on input object
 #' @export
 #' @docType methods
@@ -384,44 +392,44 @@ setGeneric("filterByCoverage",function(methylObj,lo.count=NULL,lo.perc=NULL,hi.c
 #' @aliases filterByCoverage,methylRaw-method
 #' @rdname filterByCoverage-methods
 setMethod("filterByCoverage", signature(methylObj="methylRaw"),
-                    function(methylObj,lo.count,lo.perc,hi.count,hi.perc){
-                      if( is.null(lo.count) & is.null(lo.perc) & is.null(hi.count) & is.null(hi.perc) ){return(methylObj)}
-                      
-                      data=getData(methylObj) # get the data part
-                      
-                      #figure out which cut-offs to use, maybe there is more elagent ways, quick&dirty works for now
-                      if(is.numeric(lo.count) ){lo.count=lo.count}
-                      if(is.numeric(lo.perc)){lo.count=quantile(data$coverage,lo.perc/100)}
-                      if(is.numeric(hi.count)){hi.count=hi.count}
-                      if(is.numeric(hi.perc)){hi.count=quantile(data$coverage,hi.perc/100)}
-                      
-                      if(is.numeric(lo.count)){data=data[data$coverage>=lo.count,]}
-                      if(is.numeric(hi.count)){data=data[data$coverage<hi.count,]}
-                      
+          function(methylObj,lo.count,lo.perc,hi.count,hi.perc){
+              if( is.null(lo.count) & is.null(lo.perc) & is.null(hi.count) & is.null(hi.perc) ){return(methylObj)}
 
-                      new("methylRaw",data,sample.id=methylObj@sample.id,
-                                           assembly=methylObj@assembly,
-                                           context=methylObj@context,resolution=methylObj@resolution)
+              data=getData(methylObj) # get the data part
 
-                      
-})
+                                        #figure out which cut-offs to use, maybe there is more elagent ways, quick&dirty works for now
+              if(is.numeric(lo.count) ){lo.count=lo.count}
+              if(is.numeric(lo.perc)){lo.count=quantile(data$coverage,lo.perc/100)}
+              if(is.numeric(hi.count)){hi.count=hi.count}
+              if(is.numeric(hi.perc)){hi.count=quantile(data$coverage,hi.perc/100)}
+
+              if(is.numeric(lo.count)){data=data[data$coverage>=lo.count,]}
+              if(is.numeric(hi.count)){data=data[data$coverage<hi.count,]}
+
+
+              new("methylRaw",data,sample.id=methylObj@sample.id,
+                  assembly=methylObj@assembly,
+                  context=methylObj@context,resolution=methylObj@resolution)
+
+
+          })
 
 #' @aliases filterByCoverage,methylRawList-method
 #' @rdname filterByCoverage-methods
 setMethod("filterByCoverage", signature(methylObj="methylRawList"),
-                    function(methylObj,lo.count,lo.perc,hi.count,hi.perc){
-                      new.list=lapply(methylObj,filterByCoverage,lo.count,lo.perc,hi.count,hi.perc)
-                      new("methylRawList", new.list,treatment=methylObj@treatment)
-})
+          function(methylObj,lo.count,lo.perc,hi.count,hi.perc){
+              new.list=lapply(methylObj,filterByCoverage,lo.count,lo.perc,hi.count,hi.perc)
+              new("methylRawList", new.list,treatment=methylObj@treatment)
+          })
 
 
 #' An S4 class for methylation events sampled in multiple experiments
 #'
-#' This class is designed to contain methylation information such as coverage, number of methylated bases, etc.. 
+#' This class is designed to contain methylation information such as coverage, number of methylated bases, etc..
 #' The methylation events contained in the class must be sampled in multiple experiments (ex: only CpG bases covered in multiple experiments are stored in the object of this class).
 #' The class extends \code{data.frame} and creates an object that holds methylation information and genomic location.
 #' The object belonging to this class is produced by \code{\link{unite}} function.
-#'          
+#'
 #' @section Slots:\describe{
 #'                  \item{\code{sample.ids}:}{character vector for ids of samples in the object}
 #'
@@ -438,49 +446,49 @@ setMethod("filterByCoverage", signature(methylObj="methylRawList"),
 #'                  \item{\code{destranded}:}{ logical value. If \code{TRUE} object is destranded, if \code{FALSE} it is not.}
 #'                  \item{\code{resolution}:}{ resolution of methylation information, allowed values: 'base' or 'region'}
 #' }
-#' 
+#'
 #' @section Details:
 #' \code{methylBase} class extends \code{\link{data.frame}} class therefore providing novice and experienced R users with a data structure that is well known and ubiquitous in many R packages.
-#' 
-#' 
+#'
+#'
 #' @section Subsetting:
 #'  In the following code snippets, \code{x} is a \code{methylDiff}.
 #'  Subsetting by \code{x[i,]} will produce a new object if subsetting is done on
-#'  rows. Column subsetting is not directly allowed to prevent errors in the 
+#'  rows. Column subsetting is not directly allowed to prevent errors in the
 #'  downstream analysis. see ?methylKit[ .
-#' 
+#'
 #' @section Accessors:
 #' The following functions provides access to data slots of methylDiff:
 #' \code{\link[methylKit]{getData}},\code{\link[methylKit]{getAssembly}},
 #' \code{\link[methylKit]{getContext}}
-#' 
-#' 
+#'
+#'
 #' @section Coercion:
 #'   \code{methylBase} object can be coerced to \code{\link[GenomicRanges]{GRanges}} object via \code{\link{as}} function.
-#' 
-#' 
+#'
+#'
 #' @examples
 #' data(methylKit)
 #' library(GenomicRanges)
 #' my.gr=as(methylBase.obj,"GRanges")
-#' 
+#'
 #' @name methylBase-class
 #' @aliases methylBase
 #' @docType class
 #' @rdname methylBase-class
 #' @export
 setClass("methylBase",contains="data.frame",representation(
-  sample.ids = "character", assembly = "character",context = "character",treatment="numeric",coverage.index="numeric",
-                                   numCs.index="numeric",numTs.index="numeric",destranded="logical",resolution = "character"))
+                          sample.ids = "character", assembly = "character",context = "character",treatment="numeric",coverage.index="numeric",
+                          numCs.index="numeric",numTs.index="numeric",destranded="logical",resolution = "character"))
 
 
-#' unite methylRawList to a single table 
-#' 
+#' unite methylRawList to a single table
+#'
 #' This functions unites \code{methylRawList} object that only bases with coverage from all samples are retained.
 #' The resulting object is a class of \code{methylBase}
 #'
 #' @param object a methylRawList object to be merged by common locations covered by reads
-#' @param destrand if TRUE, reads covering both strands of a CpG dinucleotide will be merged, 
+#' @param destrand if TRUE, reads covering both strands of a CpG dinucleotide will be merged,
 #'   do not set to TRUE if not only interested in CpGs (default: FALSE). If the methylRawList object
 #'   contains regions rather than bases setting destrand to TRUE will have no effect.
 #' @param min.per.group an integer denoting minimum number of samples per replicate needed to cover a region/base. By default only regions/bases that are covered in all samples
@@ -492,12 +500,12 @@ setClass("methylBase",contains="data.frame",representation(
 #' @aliases unite,-methods unite,methylRawList-method
 #' @export
 #' @examples
-#' 
+#'
 #'  data(methylKit)
-#'  ## Following 
-#'  my.methylBase=unite(methylRawList.obj) 
+#'  ## Following
+#'  my.methylBase=unite(methylRawList.obj)
 #'  my.methylBase=unite(methylRawList.obj,destrand=TRUE)
-#'  
+#'
 #' @docType methods
 #' @rdname unite-methods
 setGeneric("unite", function(object,destrand=FALSE,min.per.group=NULL) standardGeneric("unite"))
@@ -506,119 +514,115 @@ setGeneric("unite", function(object,destrand=FALSE,min.per.group=NULL) standardG
 #' @aliases unite,methylRawList-method
 setMethod("unite", "methylRawList",
           function(object,destrand,min.per.group){
-            
-            
-            
-            
-            #check if assemblies,contexts and resolutions are same type NOT IMPLEMENTED   
-            if( length(unique(vapply(object,function(x) x@context,FUN.VALUE="character"))) > 1)
-            {
-              stop("supplied methylRawList object have different methylation contexts:not all methylation events from the same bases")
-            }
-            if( length(unique(vapply(object,function(x) x@assembly,FUN.VALUE="character"))) > 1)
-            {
-              stop("supplied methylRawList object have different genome assemblies")
-            }                     
-            if( length(unique(vapply(object,function(x) x@resolution,FUN.VALUE="character"))) > 1)
-            {
-              stop("supplied methylRawList object have different methylation resolutions:some base-pair some regional")
-            } 
-            
-            if( (!is.null(min.per.group)) &  ( ! is.integer( min.per.group ) )  ){stop("min.per.group should be an integer\ntry providing integers as 1L, 2L,3L etc.\n")}
-            
-            #merge raw methylation calls together
-            df=getData(object[[1]])
-            if(destrand & (object[[1]]@resolution == "base") ){df=.CpG.dinuc.unify(df)}
-            df=data.table(df,key=c("chr","start","end","strand"))
-            sample.ids=c(object[[1]]@sample.id)
-            assemblies=c(object[[1]]@assembly)
-            contexts  =c(object[[1]]@context)
-            for(i in 2:length(object))
-            {
-              df2=getData(object[[i]])
-              if(destrand & (object[[1]]@resolution == "base") ){df2=.CpG.dinuc.unify(df2)}
-              #
-              
-              if( is.null(min.per.group) ){
-                df2=data.table(df2[,c(1:3,5:7)])
-                df=merge(df,df2,by=c("chr","start","end","strand"),suffixes=c(as.character(i-1),as.character(i) ) ) # merge the dat to a data.frame
-              }else{
-                df2=data.table(df2,key=c("chr","start","end","strand") )
-                # using hacked data.table merge called merge2: temporary fix
-                df=merge2(df,df2,by=c("chr","start","end","strand"),suffixes=c(as.character(i-1),as.character(i) ) ,all=TRUE)
+              ##check if assemblies,contexts and resolutions are same type NOT IMPLEMENTED
+              if( length(unique(vapply(object,function(x) x@context,FUN.VALUE="character"))) > 1)
+                  {
+                      stop("supplied methylRawList object have different methylation contexts:not all methylation events from the same bases")
+                  }
+              if( length(unique(vapply(object,function(x) x@assembly,FUN.VALUE="character"))) > 1)
+                  {
+                      stop("supplied methylRawList object have different genome assemblies")
+                  }
+              if( length(unique(vapply(object,function(x) x@resolution,FUN.VALUE="character"))) > 1)
+                  {
+                      stop("supplied methylRawList object have different methylation resolutions:some base-pair some regional")
+                  }
+
+              if( (!is.null(min.per.group)) &  ( ! is.integer( min.per.group ) )  ){stop("min.per.group should be an integer\ntry providing integers as 1L, 2L,3L etc.\n")}
+              ##merge raw methylation calls together
+              df=getData(object[[1]])
+              if(destrand & (object[[1]]@resolution == "base") ){df=.CpG.dinuc.unify(df)}
+              df=data.table(df,key=c("chr","start","end","strand"))
+              sample.ids=c(object[[1]]@sample.id)
+              assemblies=c(object[[1]]@assembly)
+              contexts  =c(object[[1]]@context)
+              for(i in 2:length(object))
+                  {
+                      df2=getData(object[[i]])
+                      if(destrand & (object[[1]]@resolution == "base") ){df2=.CpG.dinuc.unify(df2)}
+                      if( is.null(min.per.group) ){
+                          df2=data.table(df2,key=c("chr","start","end","strand") )
+                          ## df2=data.table(df2[,c(1:3,5:7)])
+                          ## merge the dat to a data.frame
+                          df=merge(df,df2,by=c("chr","start","end","strand"),suffixes=c(as.character(i-1),as.character(i) ) )
+                      }else{
+                          df2=data.table(df2,key=c("chr","start","end","strand") )
+                          ## using hacked data.table merge called merge2: temporary fix
+                          df=merge2(df,df2,by=c("chr","start","end","strand"),suffixes=c(as.character(i-1),as.character(i) ),
+                              all=TRUE)
+                      }
+                      sample.ids=c(sample.ids,object[[i]]@sample.id)
+                      contexts=c(contexts,object[[i]]@context)
+                  }
+
+                                        # stop if the assembly of object don't match
+              if( length( unique(assemblies) ) != 1 ){stop("assemblies of methylrawList elements should be same\n")}
+
+
+              if(  ! is.null(min.per.group) ){
+                                        # if the the min.per.group argument is supplied, remove the rows that doesn't have enough coverage
+
+                                        # get indices of coverage,numCs and numTs in the data frame
+                  coverage.ind=seq(5,by=3,length.out=length(object))
+                  numCs.ind   =coverage.ind+1
+                  numTs.ind   =coverage.ind+2
+                  start.ind   =2 # will be needed to weed out NA values on chr/start/end/strand
+
+                  for(i in unique(object@treatment) ){
+                      my.ind=coverage.ind[object@treatment==i]
+                      ldat = !is.na(df[,my.ind,with=FALSE])
+                      if(  is.null(dim(ldat))  ){  # if there is only one dimension
+                          df=df[ldat>=min.per.group,]
+                      }else{
+                          df=df[rowSums(ldat)>=min.per.group,]
+                      }
+                  }
+                                        #mat=df[,c(start.ind-1,start.ind,start.ind+1,start.ind+2)] # get all location columns, they are now duplicated with possible NA values
+                                        #locs=t(apply(mat,1,function(x) unique(x[!is.na(x)]) ) ) # get location matrix
+                                        #if(ncol(locs)==3){ # if the resolution is base
+                                        #  df[,c(2:5)]=data.frame(chr=locs[,1],start=as.numeric(locs[,2]),end=as.numeric(locs[,2]),strand=locs[,3])
+                                        #}else{   # if the resolution is region
+                                        #  df[,c(2:5)]=data.frame(chr=locs[,1],start=as.numeric(locs[,2]),end=as.numeric(locs[,3]),strand=locs[,4])
+                                        #}
+                                        #start.ind   =seq(10,by=7,length.out=length(object)) # will be needed to weed out NA values on chr/start/end/strand
+
+                                        #df=df[,-c(start.ind-1,start.ind,start.ind+1,start.ind+2)]
+                                        #names(df)[2:5]=c("chr","start","end","strand")
               }
-              sample.ids=c(sample.ids,object[[i]]@sample.id)
-              contexts=c(contexts,object[[i]]@context)
-            }
-            
-            # stop if the assembly of object don't match
-            if( length( unique(assemblies) ) != 1 ){stop("assemblies of methylrawList elements should be same\n")}
-            
-            
-            if(  ! is.null(min.per.group) ){
-              # if the the min.per.group argument is supplied, remove the rows that doesn't have enough coverage
-              
-              # get indices of coverage,numCs and numTs in the data frame 
+              df=as.data.frame(df)
+                                        # get indices of coverage,numCs and numTs in the data frame
               coverage.ind=seq(5,by=3,length.out=length(object))
               numCs.ind   =coverage.ind+1
               numTs.ind   =coverage.ind+2
-              start.ind   =2 # will be needed to weed out NA values on chr/start/end/strand
-              
-              for(i in unique(object@treatment) ){
-                my.ind=coverage.ind[object@treatment==i]
-                ldat = !is.na(df[,my.ind,with=FALSE])
-                if(  is.null(dim(ldat))  ){  # if there is only one dimension
-                  df=df[ldat>=min.per.group,]
-                }else{
-                  df=df[rowSums(ldat)>=min.per.group,]
-                }
-              }
-              #mat=df[,c(start.ind-1,start.ind,start.ind+1,start.ind+2)] # get all location columns, they are now duplicated with possible NA values
-              #locs=t(apply(mat,1,function(x) unique(x[!is.na(x)]) ) ) # get location matrix
-              #if(ncol(locs)==3){ # if the resolution is base
-              #  df[,c(2:5)]=data.frame(chr=locs[,1],start=as.numeric(locs[,2]),end=as.numeric(locs[,2]),strand=locs[,3])
-              #}else{   # if the resolution is region
-              #  df[,c(2:5)]=data.frame(chr=locs[,1],start=as.numeric(locs[,2]),end=as.numeric(locs[,3]),strand=locs[,4])
-              #}
-              #start.ind   =seq(10,by=7,length.out=length(object)) # will be needed to weed out NA values on chr/start/end/strand
-              
-              #df=df[,-c(start.ind-1,start.ind,start.ind+1,start.ind+2)]
-              #names(df)[2:5]=c("chr","start","end","strand")
-            }
-            df=as.data.frame(df)
-            # get indices of coverage,numCs and numTs in the data frame 
-            coverage.ind=seq(5,by=3,length.out=length(object))
-            numCs.ind   =coverage.ind+1
-            numTs.ind   =coverage.ind+2
-            
-            # change column names
-            names(df)[coverage.ind]=paste(c("coverage"),1:length(object),sep="" )
-            names(df)[numCs.ind]   =paste(c("numCs"),1:length(object),sep="" )
-            names(df)[numTs.ind]   =paste(c("numTs"),1:length(object),sep="" )
-            
-            #make methylbase object and return the object
-            obj=new("methylBase",(df),sample.ids=sample.ids,
-                    assembly=unique(assemblies),context=unique(contexts),
-                    treatment=object@treatment,coverage.index=coverage.ind,
-                    numCs.index=numCs.ind,numTs.index=numTs.ind,destranded=destrand,resolution=object[[1]]@resolution )
-            obj
+
+                                        # change column names
+              names(df)[coverage.ind]=paste(c("coverage"),1:length(object),sep="" )
+              names(df)[numCs.ind]   =paste(c("numCs"),1:length(object),sep="" )
+              names(df)[numTs.ind]   =paste(c("numTs"),1:length(object),sep="" )
+
+                                        #make methylbase object and return the object
+              obj=new("methylBase",(df),sample.ids=sample.ids,
+                  assembly=unique(assemblies),context=unique(contexts),
+                  treatment=object@treatment,coverage.index=coverage.ind,
+                  numCs.index=numCs.ind,numTs.index=numTs.ind,destranded=destrand,resolution=object[[1]]@resolution )
+              obj
           }
-)           
+          )
 
 #' get correlation between samples in methylBase object
-#' 
+#'
 #' The functions returns a matrix of correlation coefficients and/or a set of scatterplots showing the relationship between samples
-#' 
-#' @param object a methylBase object 
-#' @param method a character string indicating which correlation coefficient (or covariance) is to be computed (default:"pearson", other options are "kendall" and "spearman") 
-#' @param plot scatterPlot if TRUE (default:FALSE) 
+#'
+#' @param object a methylBase object
+#' @param method a character string indicating which correlation coefficient (or covariance) is to be computed (default:"pearson", other options are "kendall" and "spearman")
+#' @param plot scatterPlot if TRUE (default:FALSE)
 #' @return a correlation matrix object and plot scatterPlot
 #' @usage getCorrelation(object,method="pearson",plot=FALSE)
 #' @examples
-#' 
+#'
 #' data(methylKit)
 #' getCorrelation(methylBase.obj,method="pearson",plot=FALSE)
-#' 
+#'
 #' @aliases getCorrelation,-methods getCorrelation,methylBase-method
 #' @export
 #' @docType methods
@@ -628,123 +632,123 @@ setGeneric("getCorrelation", function(object,method="pearson",plot=FALSE) standa
 #' @rdname getCorrelation-methods
 #' @aliases getCorrelation-method
 setMethod("getCorrelation", "methylBase",
-                    function(object,method,plot){
-                        meth.mat = getData(object)[, object@numCs.index]/
-                          (getData(object)[,object@numCs.index] + getData(object)[,object@numTs.index] )                                      
-                        names(meth.mat)=object@sample.ids
-                        
-                        print( cor(meth.mat,method=method) )
-                      
-                        
-                        panel.cor.pearson <- function(x, y, digits=2, prefix="", cex.cor, ...)
-                        {
-                          usr <- par("usr"); on.exit(par(usr))
-                          par(usr = c(0, 1, 0, 1))
-                          r <- abs(cor(x, y,method="pearson"))
-                          txt <- format(c(r, 0.123456789), digits=digits)[1]
-                          txt <- paste(prefix, txt, sep="")
-                          if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
-                          text(0.5, 0.5, txt, cex = cex.cor * r)
-                        }
+          function(object,method,plot){
+              meth.mat = getData(object)[, object@numCs.index]/
+                  (getData(object)[,object@numCs.index] + getData(object)[,object@numTs.index] )
+              names(meth.mat)=object@sample.ids
 
-                        panel.cor.kendall <- function(x, y, digits=2, prefix="", cex.cor, ...)
-                        {
-                          usr <- par("usr"); on.exit(par(usr))
-                          par(usr = c(0, 1, 0, 1))
-                          r <- abs(cor(x, y,method="kendall"))
-                          txt <- format(c(r, 0.123456789), digits=digits)[1]
-                          txt <- paste(prefix, txt, sep="")
-                          if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
-                          text(0.5, 0.5, txt, cex = cex.cor * r)
+              print( cor(meth.mat,method=method) )
+
+
+              panel.cor.pearson <- function(x, y, digits=2, prefix="", cex.cor, ...)
+                  {
+                      usr <- par("usr"); on.exit(par(usr))
+                      par(usr = c(0, 1, 0, 1))
+                      r <- abs(cor(x, y,method="pearson"))
+                      txt <- format(c(r, 0.123456789), digits=digits)[1]
+                      txt <- paste(prefix, txt, sep="")
+                      if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+                      text(0.5, 0.5, txt, cex = cex.cor * r)
+                  }
+
+              panel.cor.kendall <- function(x, y, digits=2, prefix="", cex.cor, ...)
+                  {
+                      usr <- par("usr"); on.exit(par(usr))
+                      par(usr = c(0, 1, 0, 1))
+                      r <- abs(cor(x, y,method="kendall"))
+                      txt <- format(c(r, 0.123456789), digits=digits)[1]
+                      txt <- paste(prefix, txt, sep="")
+                      if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+                      text(0.5, 0.5, txt, cex = cex.cor * r)
+                  }
+
+              panel.cor.spearman <- function(x, y, digits=2, prefix="", cex.cor, ...)
+                  {
+                      usr <- par("usr"); on.exit(par(usr))
+                      par(usr = c(0, 1, 0, 1))
+                      r <- abs(cor(x, y,method="spearman"))
+                      txt <- format(c(r, 0.123456789), digits=digits)[1]
+                      txt <- paste(prefix, txt, sep="")
+                      if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+                      text(0.5, 0.5, txt, cex = cex.cor * r)
+                  }
+
+
+
+              panel.my.smooth2<-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 1, col.smooth = "darkgreen", span = 2/3, iter = 3, ...)
+                  {
+                      par(new = TRUE)    #par(usr = c(usr[1:2], 0, 1.5) )
+                      smoothScatter(x, y,colramp=colorRampPalette(topo.colors(100)), bg = bg)
+                      ok <- is.finite(x) & is.finite(y)
+                      if (any(ok))
+                          lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...)
+                      abline(lm(y[ok]~x[ok]), col="red")
+                  }
+
+              panel.my.smooth<-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 0.3, col.smooth = "green", span = 2/3, iter = 3, ...)
+                  {
+                      points(x, y, pch = 20, col = densCols(x,y,colramp=colorRampPalette(topo.colors(20))), bg = bg, cex = 0.1)
+                      ok <- is.finite(x) & is.finite(y)
+                      if (any(ok)){
+                          lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...);
+                          abline(lm(y[ok]~x[ok]), col="red")}
+                  }
+              panel.hist <- function(x, ...)
+                  {
+                      usr <- par("usr"); on.exit(par(usr))
+                      par(usr = c(usr[1:2], 0, 1.5) )
+                      h <- hist(x, plot = FALSE)
+                      breaks <- h$breaks; nB <- length(breaks)
+                      y <- h$counts; y <- y/max(y)
+                      rect(breaks[-nB], 0, breaks[-1], y, col="cyan", ...)
+                  }
+
+              if(plot)
+                  {
+
+                      if(method=="spearman")
+                          { pairs(meth.mat,
+                                  lower.panel=panel.my.smooth2,
+                                  upper.panel=panel.cor.spearman,
+                                  diag.panel=panel.hist,main=paste(object@context, object@resolution ,method,"cor.") )
                         }
-                        
-                        panel.cor.spearman <- function(x, y, digits=2, prefix="", cex.cor, ...)
-                        {
-                          usr <- par("usr"); on.exit(par(usr))
-                          par(usr = c(0, 1, 0, 1))
-                          r <- abs(cor(x, y,method="spearman"))
-                          txt <- format(c(r, 0.123456789), digits=digits)[1]
-                          txt <- paste(prefix, txt, sep="")
-                          if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
-                          text(0.5, 0.5, txt, cex = cex.cor * r)
-                        }
-                        
-                        
-                        
-                        panel.my.smooth2<-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 1, col.smooth = "darkgreen", span = 2/3, iter = 3, ...) 
-                        {
-                             par(new = TRUE)    #par(usr = c(usr[1:2], 0, 1.5) )
-                            smoothScatter(x, y,colramp=colorRampPalette(topo.colors(100)), bg = bg)
-                            ok <- is.finite(x) & is.finite(y)
-                            if (any(ok)) 
-                                lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...)
-                                abline(lm(y[ok]~x[ok]), col="red")
-                        }
-                        
-                        panel.my.smooth<-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 0.3, col.smooth = "green", span = 2/3, iter = 3, ...) 
-                        {
-                            points(x, y, pch = 20, col = densCols(x,y,colramp=colorRampPalette(topo.colors(20))), bg = bg, cex = 0.1)
-                            ok <- is.finite(x) & is.finite(y)
-                            if (any(ok)){
-                                lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...);
-                                abline(lm(y[ok]~x[ok]), col="red")}
-                        }
-                        panel.hist <- function(x, ...)
-                        {
-                            usr <- par("usr"); on.exit(par(usr))
-                            par(usr = c(usr[1:2], 0, 1.5) )
-                            h <- hist(x, plot = FALSE)
-                            breaks <- h$breaks; nB <- length(breaks)
-                            y <- h$counts; y <- y/max(y)
-                            rect(breaks[-nB], 0, breaks[-1], y, col="cyan", ...)
-                        }
-                        
-                        if(plot)
-                        {  
-                         
-                          if(method=="spearman")
-                          { pairs(meth.mat, 
-                              lower.panel=panel.my.smooth2, 
-                              upper.panel=panel.cor.spearman,
-                              diag.panel=panel.hist,main=paste(object@context, object@resolution ,method,"cor.") )
-                          }
-                          if(method=="kendall")
-                          { pairs(meth.mat, 
-                                  lower.panel=panel.my.smooth2, 
+                      if(method=="kendall")
+                          { pairs(meth.mat,
+                                  lower.panel=panel.my.smooth2,
                                   upper.panel=panel.cor.kendall,
                                   diag.panel=panel.hist,main=paste(object@context, object@resolution ,method,"cor.") )
-                          }
-                          if(method=="pearson")
-                          { pairs(meth.mat, 
-                                  lower.panel=panel.my.smooth2, 
+                        }
+                      if(method=="pearson")
+                          { pairs(meth.mat,
+                                  lower.panel=panel.my.smooth2,
                                   upper.panel=panel.cor.pearson,
                                   diag.panel=panel.hist,main=paste(object@context, object@resolution ,method,"cor.") )
-                          }
-                          
-                          
                         }
-                    }  
- )
+
+
+                  }
+          }
+          )
 
 
 
 #' get coverage stats from methylRaw object
-#' 
+#'
 #' The function returns basic statistics about read coverage per base. It can also plot a histogram of read coverage values.
-#' 
-#' @param object a \code{methylRaw} object 
-#' @param plot plot a histogram of coverage if TRUE (default:FALSE) 
+#'
+#' @param object a \code{methylRaw} object
+#' @param plot plot a histogram of coverage if TRUE (default:FALSE)
 #' @param both.strands do stats and plot for both strands if TRUE (default:FALSE)
 #' @param labels should the bars of the histrogram have labels showing the percentage of values in each bin (default:TRUE)
 #' @param ... options to be passed to \code{\link[graphics]{hist}} function
 #' @usage getCoverageStats(object,plot=FALSE,both.strands=FALSE,labels=TRUE,...)
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' # gets coverage stats for the first sample in methylRawList.obj object
 #' getCoverageStats(methylRawList.obj[[1]],plot=TRUE,both.strands=FALSE,labels=TRUE)
-#' 
-#' 
+#'
+#'
 #' @return a summary of coverage statistics or plot a histogram of coverage
 #' @aliases getCoverageStats,methylRaw
 #' @export
@@ -755,103 +759,103 @@ setGeneric("getCoverageStats", function(object,plot=FALSE,both.strands=FALSE,lab
 #' @rdname getCoverageStats-methods
 #' @aliases getCoverageStats,methylRaw-method
 setMethod("getCoverageStats", "methylRaw",
-                    function(object,plot,both.strands,labels,...){
-                      
-                      if(!plot){
-                        qts=seq(0,0.9,0.1) # get quantiles
-                        qts=c(qts,0.95,0.99,0.995,0.999,1)                          
-                        
-                        if(both.strands){       
-                          plus.cov=object[object$strand=="+",]$coverage
-                          mnus.cov=object[object$strand=="-",]$coverage
-                          
-                          cat("read coverage statistics per base\n\n")
-                          cat("FORWARD STRAND:\n")
-                          cat("summary:\n")
-                          print( summary( plus.cov ) )
-                          cat("percentiles:\n")
-                          print(quantile( plus.cov,p=qts ))
-                          cat("\n\n")
-                          cat("REVERSE STRAND:\n")
-                          cat("summary:\n")
-                          print( summary( mnus.cov ) )
-                          cat("percentiles:\n")
-                          print(quantile( mnus.cov,p=qts ))
-                          cat("\n")                          
-                        }else{
-                          
-                          all.cov=object$coverage
-                          
-                          cat("read coverage statistics per base\n")
-                          cat("summary:\n")
-                          print( summary( all.cov ) )
-                          cat("percentiles:\n")
-                          print(quantile( all.cov,p=qts ))
-                          cat("\n")
-                        }
-                        
-                      }else{
-                        if(both.strands){   
-                          plus.cov=object[object$strand=="+",]$coverage
-                          mnus.cov=object[object$strand=="-",]$coverage
-                          
-                          par(mfrow=c(1,2))
-                          if(labels){
-                            a=hist(log10(plus.cov),plot=F)
-                            my.labs=as.character(round(100*a$counts/length(plus.cov),1))
-                          }else{my.labs=F}
- 
-                          hist(log10(plus.cov),col="chartreuse4",
-                               xlab=paste("log10 of read coverage per",object@resolution),
-                               main=paste("Histogram of", object@context, "coverage: Forward strand"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
+          function(object,plot,both.strands,labels,...){
 
-                         if(labels){
-                            a=hist(log10(mnus.cov),plot=F)
-                            my.labs=as.character(round(100*a$counts/length(mnus.cov),1))
-                          }else{my.labs=F}
+              if(!plot){
+                  qts=seq(0,0.9,0.1) # get quantiles
+                  qts=c(qts,0.95,0.99,0.995,0.999,1)
+
+                  if(both.strands){
+                      plus.cov=object[object$strand=="+",]$coverage
+                      mnus.cov=object[object$strand=="-",]$coverage
+
+                      cat("read coverage statistics per base\n\n")
+                      cat("FORWARD STRAND:\n")
+                      cat("summary:\n")
+                      print( summary( plus.cov ) )
+                      cat("percentiles:\n")
+                      print(quantile( plus.cov,p=qts ))
+                      cat("\n\n")
+                      cat("REVERSE STRAND:\n")
+                      cat("summary:\n")
+                      print( summary( mnus.cov ) )
+                      cat("percentiles:\n")
+                      print(quantile( mnus.cov,p=qts ))
+                      cat("\n")
+                  }else{
+
+                      all.cov=object$coverage
+
+                      cat("read coverage statistics per base\n")
+                      cat("summary:\n")
+                      print( summary( all.cov ) )
+                      cat("percentiles:\n")
+                      print(quantile( all.cov,p=qts ))
+                      cat("\n")
+                  }
+
+              }else{
+                  if(both.strands){
+                      plus.cov=object[object$strand=="+",]$coverage
+                      mnus.cov=object[object$strand=="-",]$coverage
+
+                      par(mfrow=c(1,2))
+                      if(labels){
+                          a=hist(log10(plus.cov),plot=F)
+                          my.labs=as.character(round(100*a$counts/length(plus.cov),1))
+                      }else{my.labs=F}
+
+                      hist(log10(plus.cov),col="chartreuse4",
+                           xlab=paste("log10 of read coverage per",object@resolution),
+                           main=paste("Histogram of", object@context, "coverage: Forward strand"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
+
+                      if(labels){
                           a=hist(log10(mnus.cov),plot=F)
-                          hist(log10(mnus.cov),col="chartreuse4",
-                               xlab=paste("log10 of read coverage per",object@resolution),
-                               main=paste("Histogram of", object@context, "coverage: Reverse strand"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
- 
-                        }else{
-                          all.cov= object$coverage
-                         if(labels){
-                           a=hist(log10(all.cov),plot=F)
-                           my.labs=as.character(round(100*a$counts/length(all.cov),1))
-                          }else{my.labs=F}                          
+                          my.labs=as.character(round(100*a$counts/length(mnus.cov),1))
+                      }else{my.labs=F}
+                      a=hist(log10(mnus.cov),plot=F)
+                      hist(log10(mnus.cov),col="chartreuse4",
+                           xlab=paste("log10 of read coverage per",object@resolution),
+                           main=paste("Histogram of", object@context, "coverage: Reverse strand"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
 
-                          hist(log10(all.cov),col="chartreuse4",
-                               xlab=paste("log10 of read coverage per",object@resolution),
-                               main=paste("Histogram of", object@context, "coverage"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
+                  }else{
+                      all.cov= object$coverage
+                      if(labels){
+                          a=hist(log10(all.cov),plot=F)
+                          my.labs=as.character(round(100*a$counts/length(all.cov),1))
+                      }else{my.labs=F}
 
-                        }
-                        
-                        
-                      }
-                        
-                      
-})
+                      hist(log10(all.cov),col="chartreuse4",
+                           xlab=paste("log10 of read coverage per",object@resolution),
+                           main=paste("Histogram of", object@context, "coverage"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
+
+                  }
+
+
+              }
+
+
+          })
 
 #' get Methylation stats from methylRaw object
-#' 
+#'
 #' The function returns basic statistics about % methylation per base/region. It can also plot a histogram of % methylation values.
-#' 
-#' @param object a \code{methylRaw} object 
-#' @param plot plot a histogram of Methylation if TRUE (deafult:FALSE) 
+#'
+#' @param object a \code{methylRaw} object
+#' @param plot plot a histogram of Methylation if TRUE (deafult:FALSE)
 #' @param both.strands do plots and stats for both strands seperately  if TRUE (deafult:FALSE)
 #' @param labels should the bars of the histrogram have labels showing the percentage of values in each bin (default:TRUE)
 #' @param ... options to be passed to \code{\link[graphics]{hist}} function.
 #' @usage  getMethylationStats(object,plot=FALSE,both.strands=FALSE,labels=TRUE,...)
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' # gets coverage stats for the first sample in methylRawList.obj object
 #' getMethylationStats(methylRawList.obj[[1]],plot=TRUE,both.strands=FALSE,labels=TRUE)
 #'
@@ -864,184 +868,184 @@ setGeneric("getMethylationStats", function(object,plot=FALSE,both.strands=FALSE,
 #' @rdname getMethylationStats-methods
 #' @aliases getMethylationStats,methylRaw-method
 setMethod("getMethylationStats", "methylRaw",
-                    function(object,plot,both.strands,labels,...){
-                      
-                      plus.met=100* object[object$strand=="+",]$numCs/object[object$strand=="+",]$coverage
-                      mnus.met=100* object[object$strand=="-",]$numCs/object[object$strand=="-",]$coverage
-                      all.met =100* object$numCs/object$coverage
-                      
-                      if(!plot){
-                        qts=seq(0,0.9,0.1) # get quantiles
-                        qts=c(qts,0.95,0.99,0.995,0.999,1)                          
-                        
-                        if(both.strands){       
-                          
-                          cat("methylation statistics per base\n\n")
-                          cat("FORWARD STRAND:\n")
-                          cat("summary:\n")
-                          print( summary( plus.met ) )
-                          cat("percentiles:\n")
-                          print(quantile( plus.met,p=qts ))
-                          cat("\n\n")
-                          cat("REVERSE STRAND:\n")
-                          cat("summary:\n")
-                          print( summary( mnus.met ) )
-                          cat("percentiles:\n")
-                          print(quantile( mnus.met,p=qts ))
-                          cat("\n")                          
-                        }else{
-                          
-                          
-                          cat("methylation statistics per base\n")
-                          cat("summary:\n")
-                          print( summary( all.met ) )
-                          cat("percentiles:\n")
-                          print(quantile( all.met,p=qts ))
-                          cat("\n")
-                        }
-                        
-                      }else{
-                        if(both.strands){   
-                          
-                          par(mfrow=c(1,2))
-                          if(labels){
-                            a=hist((plus.met),plot=F)
-                            my.labs=as.character(round(100*a$counts/length(plus.met),1))
-                          }else{my.labs=FALSE}
-                          hist((plus.met),col="cornflowerblue",
-                               xlab=paste("% methylation per",object@resolution),
-                               main=paste("Histogram of %", object@context,"methylation: Forward strand"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
+          function(object,plot,both.strands,labels,...){
 
-                          if(labels){                          
-                            a=hist((mnus.met),plot=F)
-                            my.labs=as.character(round(100*a$counts/length(mnus.met),1))
-                          }
-                          else{my.labs=FALSE}
-                          
-                          hist((mnus.met),col="cornflowerblue",
-                               xlab=paste("% methylation per",object@resolution),
-                               main=paste("Histogram of %", object@context,"methylation: Reverse strand"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
- 
-                        }else{
-                          if(labels){                          
-                          
-                            a=hist((all.met),plot=F)
-                            my.labs=as.character(round(100*a$counts/length(all.met),1))
-                          }else{my.labs=FALSE}
-                          hist((all.met),col="cornflowerblue",
-                               xlab=paste("% methylation per",object@resolution),
-                               main=paste("Histogram of %", object@context,"methylation"),
-                               labels=my.labs,...)
-                          mtext(object@sample.id, side = 3)
+              plus.met=100* object[object$strand=="+",]$numCs/object[object$strand=="+",]$coverage
+              mnus.met=100* object[object$strand=="-",]$numCs/object[object$strand=="-",]$coverage
+              all.met =100* object$numCs/object$coverage
 
-                        }
-                        
-                        
+              if(!plot){
+                  qts=seq(0,0.9,0.1) # get quantiles
+                  qts=c(qts,0.95,0.99,0.995,0.999,1)
+
+                  if(both.strands){
+
+                      cat("methylation statistics per base\n\n")
+                      cat("FORWARD STRAND:\n")
+                      cat("summary:\n")
+                      print( summary( plus.met ) )
+                      cat("percentiles:\n")
+                      print(quantile( plus.met,p=qts ))
+                      cat("\n\n")
+                      cat("REVERSE STRAND:\n")
+                      cat("summary:\n")
+                      print( summary( mnus.met ) )
+                      cat("percentiles:\n")
+                      print(quantile( mnus.met,p=qts ))
+                      cat("\n")
+                  }else{
+
+
+                      cat("methylation statistics per base\n")
+                      cat("summary:\n")
+                      print( summary( all.met ) )
+                      cat("percentiles:\n")
+                      print(quantile( all.met,p=qts ))
+                      cat("\n")
+                  }
+
+              }else{
+                  if(both.strands){
+
+                      par(mfrow=c(1,2))
+                      if(labels){
+                          a=hist((plus.met),plot=F)
+                          my.labs=as.character(round(100*a$counts/length(plus.met),1))
+                      }else{my.labs=FALSE}
+                      hist((plus.met),col="cornflowerblue",
+                           xlab=paste("% methylation per",object@resolution),
+                           main=paste("Histogram of %", object@context,"methylation: Forward strand"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
+
+                      if(labels){
+                          a=hist((mnus.met),plot=F)
+                          my.labs=as.character(round(100*a$counts/length(mnus.met),1))
                       }
-                        
-                      
-})
+                      else{my.labs=FALSE}
+
+                      hist((mnus.met),col="cornflowerblue",
+                           xlab=paste("% methylation per",object@resolution),
+                           main=paste("Histogram of %", object@context,"methylation: Reverse strand"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
+
+                  }else{
+                      if(labels){
+
+                          a=hist((all.met),plot=F)
+                          my.labs=as.character(round(100*a$counts/length(all.met),1))
+                      }else{my.labs=FALSE}
+                      hist((all.met),col="cornflowerblue",
+                           xlab=paste("% methylation per",object@resolution),
+                           main=paste("Histogram of %", object@context,"methylation"),
+                           labels=my.labs,...)
+                      mtext(object@sample.id, side = 3)
+
+                  }
+
+
+              }
+
+
+          })
 
 
 
 
 
-# get distribution of difference between samples in methylBase object
-# unites methylrawlist objects based on chromosomal positions of CpG dinucleotides
-#setGeneric("getDifference", function(object,plot=F) standardGeneric("getCorrelation"))
-#setMethod("getDifference", "methylBase",
-#                    function(object,plot){
-#                        meth.mat = object@data[, object@numCs.index]/(object@data[,object@numCs.index] + object@data[,object@numTs.index] )                                      
-#                        names(meth.mat)=object@sample.ids                      
-#                      
-#                        ind=t(combn(1:4,2) )
-#                        d.list=(meth.mat[,ind[1,1]]-meth.mat[,ind[1,2]])
-#                        for(i in 2:nrow(ind))
-#                        {
-#                          d.list=cbind(d.list,meth.mat[,ind[i,1]]-meth.mat[,ind[i,2]])
-#                        }
-#                    }                       
-#                  ) 
+                                        # get distribution of difference between samples in methylBase object
+                                        # unites methylrawlist objects based on chromosomal positions of CpG dinucleotides
+                                        #setGeneric("getDifference", function(object,plot=F) standardGeneric("getCorrelation"))
+                                        #setMethod("getDifference", "methylBase",
+                                        #                    function(object,plot){
+                                        #                        meth.mat = object@data[, object@numCs.index]/(object@data[,object@numCs.index] + object@data[,object@numTs.index] )
+                                        #                        names(meth.mat)=object@sample.ids
+                                        #
+                                        #                        ind=t(combn(1:4,2) )
+                                        #                        d.list=(meth.mat[,ind[1,1]]-meth.mat[,ind[1,2]])
+                                        #                        for(i in 2:nrow(ind))
+                                        #                        {
+                                        #                          d.list=cbind(d.list,meth.mat[,ind[i,1]]-meth.mat[,ind[i,2]])
+                                        #                        }
+                                        #                    }
+                                        #                  )
 
 
 
-                        
-#
-#  methylBase accessor and show functions
-#
+
+                                        #
+                                        #  methylBase accessor and show functions
+                                        #
 
 
 #' show method for methylKit classes
-#' 
+#'
 #' The show method works for \code{methylRaw},\code{methylRawList},
 #' \code{methylBase} and \code{methylDiff} objects
-#' 
+#'
 #' @examples
 #' data(methylKit)
 #' methylDiff.obj
 #' show(methylDiff.obj)
-#' 
-#' 
+#'
+#'
 #'
 #' @rdname show-methods
 #' @aliases show,methylBase
 setMethod("show", "methylBase", function(object) {
-  
-  cat("methylBase object with",nrow(object),"rows\n--------------\n")
-  print(head(object))
-  cat("--------------\n")
-  cat("sample.ids:",object@sample.ids,"\n")
-  cat("destranded",object@destranded,"\n")
-  cat("assembly:",object@assembly,"\n")
-  cat("context:", object@context,"\n")
-  cat("treament:", object@treatment,"\n")
-  cat("resolution:", object@resolution,"\n")
+
+    cat("methylBase object with",nrow(object),"rows\n--------------\n")
+    print(head(object))
+    cat("--------------\n")
+    cat("sample.ids:",object@sample.ids,"\n")
+    cat("destranded",object@destranded,"\n")
+    cat("assembly:",object@assembly,"\n")
+    cat("context:", object@context,"\n")
+    cat("treament:", object@treatment,"\n")
+    cat("resolution:", object@resolution,"\n")
 })
 
 #' @rdname show-methods
 #' @aliases show,methylRaw
 setMethod("show", "methylRaw", function(object) {
-  
-  cat("methylRaw object with",nrow(object),"rows\n--------------\n")
-  print(head(object))
-  cat("--------------\n")
-  cat("sample.id:",object@sample.id,"\n")
-  cat("assembly:",object@assembly,"\n")
-  cat("context:", object@context,"\n")
-  cat("resolution:", object@resolution,"\n\n")
+
+    cat("methylRaw object with",nrow(object),"rows\n--------------\n")
+    print(head(object))
+    cat("--------------\n")
+    cat("sample.id:",object@sample.id,"\n")
+    cat("assembly:",object@assembly,"\n")
+    cat("context:", object@context,"\n")
+    cat("resolution:", object@resolution,"\n\n")
 })
 
 #' @rdname show-methods
 #' @aliases show,methylRawList
 setMethod("show", "methylRawList", function(object) {
-  
-  cat("methylRawList object with",length(object),"methylRaw objects\n\n")
-  
-  lapply(object,show)
-  cat("treament:", object@treatment,"\n")
-  
+
+    cat("methylRawList object with",length(object),"methylRaw objects\n\n")
+
+    lapply(object,show)
+    cat("treament:", object@treatment,"\n")
+
 })
 
 
 #' get assembly of the genome
-#' 
+#'
 #' The function returns the genome assembly stored in any of the \code{\link{methylBase}},\code{\link{methylRaw}},\code{\link{methylDiff}} objects
-#' 
+#'
 #' @param x an \code{\link{methylBase}},\code{\link{methylRaw}} or \code{\link{methylDiff}} object
 #' @usage getAssembly(x)
 #' @examples
-#' 
+#'
 #' data(methylKit)
-#' 
+#'
 #' getAssembly(methylBase.obj)
 #' getAssembly(methylDiff.obj)
 #' getAssembly(methylRawList.obj[[1]])
-#' 
-#' 
+#'
+#'
 #' @return the assembly string for the object
 #' @export
 #' @docType methods
@@ -1051,30 +1055,30 @@ setGeneric("getAssembly", def=function(x) standardGeneric("getAssembly"))
 #' @rdname getAssembly-methods
 #' @aliases getAssembly,methylBase-method
 setMethod("getAssembly", signature="methylBase", definition=function(x) {
-                return(x@assembly)
-        }) 
+    return(x@assembly)
+})
 
 #' @rdname getAssembly-methods
 #' @aliases getAssembly,methylRaw-method
 setMethod("getAssembly", signature="methylRaw", definition=function(x) {
-                return(x@assembly)
-        })
+    return(x@assembly)
+})
 
 #' get the context of methylation
-#' 
+#'
 #' The function returns the context of methylation. For example: "CpG","CHH" or "CHG"
-#' 
+#'
 #' @param x an \code{\link{methylBase}},\code{\link{methylRaw}} or an \code{\link{methylDiff}} object
 #' @usage getContext(x)
-#' @examples 
-#' 
+#' @examples
+#'
 #' data(methylKit)
-#' 
+#'
 #' getContext(methylBase.obj)
 #' getContext(methylDiff.obj)
 #' getContext(methylRawList.obj[[1]])
 #'
-#' @return a string for the context methylation 
+#' @return a string for the context methylation
 #' @export
 #' @docType methods
 #' @rdname getContext-methods
@@ -1083,19 +1087,19 @@ setGeneric("getContext", def=function(x) standardGeneric("getContext"))
 #' @rdname getContext-methods
 #' @aliases getContext,methylBase-method
 setMethod("getContext", signature="methylBase", definition=function(x) {
-                return(x@context)
-        })
+    return(x@context)
+})
 
 #' @rdname getContext-methods
 #' @aliases getContext,methylRaw-method
 setMethod("getContext", signature="methylRaw", definition=function(x) {
-                return(x@context)
-        })
+    return(x@context)
+})
 
 
 
 #' get the data slot from the methylKit objects
-#' 
+#'
 #' The functions retrieves the table containing methylation information from \code{methylKit} Objects.
 #' The data retrived from this function is of a \code{\link{data.frame}}. This is basically containing all relevant methylation information per genomic region or base.
 #'
@@ -1103,17 +1107,17 @@ setMethod("getContext", signature="methylRaw", definition=function(x) {
 #' @usage getData(x)
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' # following commands show first lines of returned data.frames from getData() function
 #' head(
 #' getData(methylBase.obj)
 #' )
-#' 
+#'
 #' head( getData(methylDiff.obj))
 #'
 #' head(getData(methylRawList.obj[[1]]))
-#' 
-#' 
+#'
+#'
 #' @return data frame for methylation events
 #' @aliases getData,-methods getData,methylBase-method
 #' @export
@@ -1124,66 +1128,66 @@ setGeneric("getData", def=function(x) standardGeneric("getData"))
 #' @rdname getData-methods
 #' @aliases getData-method
 setMethod("getData", signature="methylBase", definition=function(x) {
-                #return(as(x,"data.frame"))
-                return(S3Part(x, strictS3 = TRUE))
-}) 
+                                        #return(as(x,"data.frame"))
+    return(S3Part(x, strictS3 = TRUE))
+})
 
 #' @rdname getData-methods
 #' @aliases getData,methylRaw-method
 setMethod("getData", signature="methylRaw", definition=function(x) {
-                #return(as(x,"data.frame"))
-                return(S3Part(x, strictS3 = TRUE))
+                                        #return(as(x,"data.frame"))
+    return(S3Part(x, strictS3 = TRUE))
 })
 
 ## CONVERTOR FUNCTIONS FOR methylRaw and methylBase OBJECT
-#convert methylRaw to GRanges
+                                        #convert methylRaw to GRanges
 setAs("methylRaw", "GRanges", function(from)
-                      {
-                        from2=getData(from)
-                        GRanges(seqnames=from2$chr,ranges=IRanges(start=from2$start, end=from2$end),
-                                       strand=from2$strand, 
-                                       coverage=from2$coverage,
-                                       numCs   =from2$numCs,
-                                       numTs  =from2$numTs                                
-                                       )
+      {
+          from2=getData(from)
+          GRanges(seqnames=from2$chr,ranges=IRanges(start=from2$start, end=from2$end),
+                  strand=from2$strand,
+                  coverage=from2$coverage,
+                  numCs   =from2$numCs,
+                  numTs  =from2$numTs
+                  )
 
-})
+      })
 
 setAs("methylBase", "GRanges", function(from)
-                      {
-                        from=getData(from)
-                        GRanges(seqnames=from$chr,ranges=IRanges(start=from$start, end=from$end),
-                                       strand=from$strand, 
-                                       data.frame(from[,5:ncol(from)])
-                                       )
+      {
+          from=getData(from)
+          GRanges(seqnames=from$chr,ranges=IRanges(start=from$start, end=from$end),
+                  strand=from$strand,
+                  data.frame(from[,5:ncol(from)])
+                  )
 
-})
+      })
 
 ### subset methylBase and methylRaw objects
 
 #' selects rows from of methylKit objects
 #'
-#' The function returns a subset of data contained in the \code{methylKit} 
+#' The function returns a subset of data contained in the \code{methylKit}
 #' objects.
-#' 
+#'
 #' @param x an \code{\link{methylBase}},\code{\link{methylRaw}} or
 #'  \code{\link{methylDiff}} object
-#' @param i a numeric or logical vector. This vector corresponds to bases or 
-#'          regions contained in \code{methylKit} objects.The vector is used to 
-#'          subset the data.  
+#' @param i a numeric or logical vector. This vector corresponds to bases or
+#'          regions contained in \code{methylKit} objects.The vector is used to
+#'          subset the data.
 #' @usage select(x,i)
 #' @examples
 #' data(methylKit)
 #'  # selects first hundred rows, returns a methylRaw object
 #' subset1=select(methylRawList.obj[[1]],1:100)
-#' 
+#'
 #' # selects first hundred rows, returns a methylBase object
-#' subset2=select(methylBase.obj,1:100) 
-#' 
+#' subset2=select(methylBase.obj,1:100)
+#'
 #' # selects first hundred rows, returns a methylDiff object
 #' subset3=select(methylDiff.obj,1:100)
-#' 
-#' @return a \code{\link{methylBase}},\code{\link{methylRaw}} or 
+#'
+#' @return a \code{\link{methylBase}},\code{\link{methylRaw}} or
 #'           \code{\link{methylDiff}} object depending on the input object.
 #' @export
 #' @docType methods
@@ -1199,18 +1203,18 @@ setMethod("select", "methylBase",
           function(x, i)
           {
 
-            new("methylBase",getData(x)[i,],
-                sample.ids = x@sample.ids, 
-                assembly = x@assembly,
-                context = x@context,
-                treatment=x@treatment,
-                coverage.index=x@coverage.index,
-                numCs.index=x@numCs.index,
-                numTs.index=x@numTs.index,
-                destranded=x@destranded,
-                resolution =x@resolution)
-           }
-)
+              new("methylBase",getData(x)[i,],
+                  sample.ids = x@sample.ids,
+                  assembly = x@assembly,
+                  context = x@context,
+                  treatment=x@treatment,
+                  coverage.index=x@coverage.index,
+                  numCs.index=x@numCs.index,
+                  numTs.index=x@numTs.index,
+                  destranded=x@destranded,
+                  resolution =x@resolution)
+          }
+          )
 
 
 
@@ -1220,77 +1224,77 @@ setMethod("select", "methylRaw",
           function(x, i)
           {
 
-          new("methylRaw",getData(x)[i,],sample.id=x@sample.id,
-                                           assembly=x@assembly,
-                                           context=x@context,
-                                           resolution=x@resolution)
-           }
-          
+              new("methylRaw",getData(x)[i,],sample.id=x@sample.id,
+                  assembly=x@assembly,
+                  context=x@context,
+                  resolution=x@resolution)
+          }
 
-)
+
+          )
 
 #' extract parts of methylRaw,methylBase and methylDiff data
-#' 
+#'
 #' The function extracts part of the data and returns a new object.
 #' @name extract
-#' @param x an \code{\link{methylBase}},\code{\link{methylRaw}} or 
+#' @param x an \code{\link{methylBase}},\code{\link{methylRaw}} or
 #'          \code{\link{methylDiff}} object
-#' @param i a numeric or logical vector. This vector corresponds to bases or 
-#'          regions contained in \code{methylKit} objects.The vector is used to 
+#' @param i a numeric or logical vector. This vector corresponds to bases or
+#'          regions contained in \code{methylKit} objects.The vector is used to
 #'          subset the data.
 #' @param j This argument can not be used for the extraction of columns.
 #'          As unintentional extraction of the columns will cause an error in
 #'          the downstream analysis. Using this argument will cause an error.
-#'           Use \code{\link[methylKit]{getData}} to access the data part of 
-#'           the objects. 
-#' 
+#'           Use \code{\link[methylKit]{getData}} to access the data part of
+#'           the objects.
 #'
-#'        
-#'        
+#'
+#'
+#'
 #' @examples
 #' data(methylKit)
-#' 
+#'
 #' # selects first hundred rows, returns a methylRaw object
-#' subset1=methylRawList.obj[[1]][1:100] 
-#' 
+#' subset1=methylRawList.obj[[1]][1:100]
+#'
 #' # selects first hundred rows, returns a methylBase object
-#' subset2=methylBase.obj[1:100,] 
-#' 
+#' subset2=methylBase.obj[1:100,]
+#'
 #' # selects first hundred rows, returns a methylDiff object
-#' subset3=methylDiff.obj[1:100,] 
-#' 
+#' subset3=methylDiff.obj[1:100,]
+#'
 #' # This will get chromomsomes, will return a factor
 #' # That means the resulting object will ceases to be a methylKit object
 #' chrs=methylDiff.obj[[2]]
-#' 
+#'
 #' @aliases [,methylRaw-method
 #' @aliases [
 #' @docType methods
 #' @rdname extract-methods
-setMethod("[", signature(x="methylRaw", i = "ANY", j="ANY"),  
+setMethod("[", signature(x="methylRaw", i = "ANY", j="ANY"),
           function(x,i,j){
-            #cat(missing(i),"\n",missing(j),"\n",missing(drop))
-            if(!missing(j)){
-              stop(paste("subsetting on columns is not allowed for",class(x),
-                         "object\nif you want to do extraction on the data part", 
-                          "of the object use getData() first"),
-                   call. = FALSE)
-            }
-            select(x,i)
+                                        #cat(missing(i),"\n",missing(j),"\n",missing(drop))
+              if(!missing(j)){
+                  stop(paste("subsetting on columns is not allowed for",class(x),
+                             "object\nif you want to do extraction on the data part",
+                             "of the object use getData() first"),
+                       call. = FALSE)
+              }
+              select(x,i)
           }
-              )
+          )
 
 #' @aliases [,methylBase-method
 #' @rdname extract-methods
-setMethod("[",signature(x="methylBase", i = "ANY", j="ANY"), 
+setMethod("[",signature(x="methylBase", i = "ANY", j="ANY"),
           function(x,i,j,drop){
-            #cat(missing(i),"\n",missing(j),"\n",missing(drop))
-            if(!missing(j)){
-              stop(paste("subsetting on columns is not allowed for",class(x),
-                         "object\nif you want to do extraction on the data part", 
-                          "of the object use getData() first"),
-                   call. = FALSE)
-            }
-            select(x,i)
+                                        #cat(missing(i),"\n",missing(j),"\n",missing(drop))
+              if(!missing(j)){
+                  stop(paste("subsetting on columns is not allowed for",class(x),
+                             "object\nif you want to do extraction on the data part",
+                             "of the object use getData() first"),
+                       call. = FALSE)
+              }
+              select(x,i)
           }
-)
+          )

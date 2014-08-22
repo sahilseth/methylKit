@@ -71,7 +71,7 @@ bed12.to.introns<-function(ref)
   exon.id     =unlist( mapply( function(x,y) if(x=="+"){return(1:y)}else{return(y:1)} ,ref[,6],ref[,10]  ) );rep.ref$V5=exon.id
   rep.ref$V3  =rep.ref$V2+b.start.size[,1]+b.start.size[,2] # calculate exon start and ends
   rep.ref$V2  =rep.ref$V2+b.start.size[,1]
-  rep.ref     =rep.ref[,c(1:6,"id")]
+  rep.ref     =rep.ref[,c(1:6,13)]
 
   # now try to get the exons by cbinding consecutive exons
   temp.ref    =cbind(rep.ref[1:(nrow(rep.ref)-1),],rep.ref[2:nrow(rep.ref),])
